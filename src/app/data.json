@@ -1,0 +1,12 @@
+[
+  { "term": "amor", "votes": 25 },
+  { "term": "vida", "votes": 37 },
+  { "term": "felicidad", "votes": 42 },
+  { "term": "amistad", "votes": 15 },
+  { "term": "familia", "votes": 30 },
+  { "term": "trabajo", "votes": 18 },
+  { "term": "viaje", "votes": 10 },
+  { "term": "hogar", "votes": 7 },
+  { "term": "salud", "votes": 33 },
+  { "term": "conocimiento", "votes": 27 }
+]
