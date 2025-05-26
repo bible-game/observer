@@ -1,6 +1,7 @@
 import { APP_URI } from '../app/app.uri';
 
 export const environment = {
+  production: true,
   logLevel: 'INFO',
   services: {
     passage: {
