@@ -12,7 +12,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install 🔧
-        run: npm i && npm run gh-build
+        run: npm i && npm run build:github
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@4.1.1
