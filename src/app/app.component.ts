@@ -29,8 +29,10 @@ export class AppComponent implements AfterViewInit {
       dataObject: this.data,
       layoutByWeightOrder: false,
       stacking: "flattened",
+      descriptionGroupSize: 0,
       relaxationInitializer: "ordered",
-      descriptionGroupSize: 0
+      groupBorderWidth: 0,
+      groupInsetWidth: 0,
     });
     this.tree = tree;
 
@@ -50,6 +52,7 @@ export class AppComponent implements AfterViewInit {
       testaments.push({
         id: test.name.toLowerCase(),
         groups: this.getDivisions(test.divisions),
+        description: false,
         weight: this.getTestamentWeight(test),
       })
     }
@@ -65,6 +68,7 @@ export class AppComponent implements AfterViewInit {
       divisions.push({
         id: d.name.toLowerCase().replace(/\s/g, '-'),
         groups: this.getBooks(d.books),
+        description: false,
         weight: this.getDivisionWeight(d),
       })
     }
@@ -78,6 +82,7 @@ export class AppComponent implements AfterViewInit {
     for (const b of bk) {
       books.push({
         id: b.key,
+        description: false,
         groups: this.getChapters(b, b.chapters),
         weight: this.getBookWeight(b)
       })
