@@ -1,15 +1,10 @@
-import { Component, Injectable, OnInit } from '@angular/core';
+import { AfterViewInit, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { TitleCasePipe } from '@angular/common';
-import * as d3 from "d3";
-import { voronoiTreemap } from "d3-voronoi-treemap";
-import "d3-weighted-voronoi";
-import "d3-voronoi-map";
-import data from "./data.json";
-import { Inject } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
+import { FoamTree } from "@carrotsearch/foamtree";
+import { ConfigService } from './core/service/config.service';
 
-@Injectable()
+
 @Component({
   selector: 'app-root',
   imports: [RouterOutlet, TitleCasePipe],
@@ -17,98 +12,122 @@ import { DOCUMENT } from '@angular/common';
   standalone: true,
   styleUrl: './app.component.sass'
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements AfterViewInit {
   title = 'observer';
-  height = 500;
-  width = 960;
-  halfWidth = this.width / 2;
-  halfHeight = this.height / 2;
-  radius = Math.min(this.halfWidth, this.halfHeight);
+  tree: any;
+  config: any;
 
-  voronoiTreemap: any;
-  hierarchy: any;
-  circlingPolygon: any;
-  svg: any;
-  drawingArea: any;
-  treemapContainer: any;
-  fontScale = d3.scaleLinear();
+  // TODO :: play with styling...
 
-  constructor(@Inject(DOCUMENT) private document: Document) {}
+  constructor(private configService: ConfigService) {}
 
-  ngOnInit() {
-    this.voronoiTreemap = voronoiTreemap();
-    this.initData();
-    this.initLayout();
-    this.hierarchy = d3.hierarchy({ children: data }).sum((d: any) => d.votes);
-    this.voronoiTreemap.clip(this.circlingPolygon)(this.hierarchy);
+  async ngAfterViewInit() {
+    this.config = await this.configService.getBibleConfig();
 
-    this.drawTreemap(this.hierarchy);
+    const tree = new FoamTree({
+      id: "tree",
+      dataObject: this.data,
+      layoutByWeightOrder: false
+    });
+    this.tree = tree;
+
+    window.addEventListener("resize", (function() {
+      let timeout: number;
+      return function() {
+        window.clearTimeout(timeout);
+        timeout = window.setTimeout(tree.resize, 300);
+      };
+    })());
   }
 
-  initData() {
-    this.circlingPolygon = this.computeCirclingPolygon();
-    this.fontScale.domain([3, 20]).range([8, 20]).clamp(true);
+  get data() {
+    const testaments: any[] = [];
+
+    for (const test of this.config.testaments) {
+      testaments.push({
+        id: test.name.toLowerCase(),
+        label: test.name,
+        groups: this.getDivisions(test.divisions),
+        weight: this.getTestamentWeight(test)
+      })
+    }
+
+    console.log(testaments);
+    return { groups: testaments }
   }
 
-  computeCirclingPolygon() {
-    return [
-      [0, 0],
-      [this.width, 0],
-      [this.width, this.height],
-      [0, this.height]
-    ];
+  getDivisions(div: any) {
+    const divisions: any[] = [];
+
+    for (const d of div) {
+      divisions.push({
+        id: d.name.toLowerCase().replace(/\s/g, '-'),
+        label: d.name,
+        groups: this.getBooks(d.books),
+        weight: this.getDivisionWeight(d)
+      })
+    }
+
+    return divisions
   }
 
-  initLayout() {
-    this.svg = d3.select(this.document).select("svg").attr("width", this.width).attr("height", this.height);
-    this.drawingArea = this.svg.append("g").classed("drawingArea", true);
-    this.treemapContainer = this.drawingArea.append("g").classed("treemap-container", true);
+  getBooks(bk: any) {
+    const books: any[] = [];
 
-    this.treemapContainer
-      .append("path")
-      .classed("world", true)
-      .attr("transform", `translate(${-this.radius}, ${-this.radius})`)
-      .attr("d", `M${this.circlingPolygon.join(",")}Z`);
+    for (const b of bk) {
+      books.push({
+        id: b.key,
+        label: b.name,
+        groups: this.getChapters(b, b.chapters),
+        weight: this.getBookWeight(b)
+      })
+    }
+
+    return books
   }
 
-  drawTreemap(hierarchy: any) {
-    const leaves = hierarchy.leaves();
+  getChapters(book: any, ch: number) {
+    const chapters: any[] = [];
 
-    this.treemapContainer
-      .append("g")
-      .classed("cells", true)
-      .selectAll(".cell")
-      .data(leaves)
-      .enter()
-      .append("path")
-      .classed("cell", true)
-      .style("stroke", "white")
-      .attr("d", (d: any) => `M${d.polygon.join(",")}z`);
+    for (let c = 1; c <= ch; c++) {
+      chapters.push({
+        id: c.toString(),
+        label: `${book.name} ${c}`,
+        weight: parseFloat(book.verses[c-1])
+      })
+    }
 
-    const labels = this.treemapContainer
-      .append("g")
-      .classed("labels", true)
-      .selectAll(".label")
-      .data(leaves)
-      .enter()
-      .append("g")
-      .classed("label", true)
-      .attr(
-        "transform",
-        (d: any) => `translate(${d.polygon.site.x}, ${d.polygon.site.y})`
-      )
-      .style("font-size", (d: any) => this.fontScale(d.data.votes));
+    return chapters
+  }
 
-    labels
-      .append("text")
-      .classed("name", true)
-      .style("fill", "blue")
-      .text((d: any) => d.data.term);
-    // labels
-    //   .append("text")
-    //   .classed("value", true)
-    //   .style("fill", "white")
-    //   .text((d: any) => `${d.data.votes}%`);
+  getBookWeight(book: any) {
+    let weight = 0.0;
+
+    for (const verse of book.verses) {
+      weight += verse;
+    }
+
+    return weight;
+  }
+
+  getDivisionWeight(division: any) {
+    let weight = 0.0;
+
+    for (const book of division.books) {
+      weight += this.getBookWeight(book);
+    }
+
+    return weight;
+  }
+
+  getTestamentWeight(testament: any) {
+    let weight = 0.0;
+
+    for (const division of testament.divisions) {
+      weight += this.getDivisionWeight(division);
+    }
+
+    return weight;
   }
 
 }
