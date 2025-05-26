@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 
 import { lastValueFrom, map } from "rxjs";
 import {HttpService} from './http.service';
-import {environment} from '../../../environment/environment.local';
+import { environment } from '../../../environment/environment';
 
 /**
  * Config-related Service Logic
