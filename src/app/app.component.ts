@@ -17,7 +17,7 @@ export class AppComponent implements AfterViewInit {
   tree: any;
   config: any;
 
-  // TODO :: play with styling...
+  // TODO :: play with features / styling...
 
   constructor(private configService: ConfigService) {}
 
@@ -27,7 +27,10 @@ export class AppComponent implements AfterViewInit {
     const tree = new FoamTree({
       id: "tree",
       dataObject: this.data,
-      layoutByWeightOrder: false
+      layoutByWeightOrder: false,
+      stacking: "flattened",
+      relaxationInitializer: "ordered",
+      descriptionGroupSize: 0
     });
     this.tree = tree;
 
@@ -46,9 +49,8 @@ export class AppComponent implements AfterViewInit {
     for (const test of this.config.testaments) {
       testaments.push({
         id: test.name.toLowerCase(),
-        label: test.name,
         groups: this.getDivisions(test.divisions),
-        weight: this.getTestamentWeight(test)
+        weight: this.getTestamentWeight(test),
       })
     }
 
@@ -62,9 +64,8 @@ export class AppComponent implements AfterViewInit {
     for (const d of div) {
       divisions.push({
         id: d.name.toLowerCase().replace(/\s/g, '-'),
-        label: d.name,
         groups: this.getBooks(d.books),
-        weight: this.getDivisionWeight(d)
+        weight: this.getDivisionWeight(d),
       })
     }
 
@@ -77,7 +78,6 @@ export class AppComponent implements AfterViewInit {
     for (const b of bk) {
       books.push({
         id: b.key,
-        label: b.name,
         groups: this.getChapters(b, b.chapters),
         weight: this.getBookWeight(b)
       })
