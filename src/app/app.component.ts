@@ -45,7 +45,7 @@ export class AppComponent implements AfterViewInit {
         vars.groupColor = params.group.color;
         vars.labelColor = "auto";
       },
-      groupFillType: "gradient"
+      groupFillType: "plain"
     });
     this.tree = tree;
 
