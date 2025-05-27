@@ -54,7 +54,8 @@ export class AppComponent implements AfterViewInit {
       rolloutDuration: 0,
       pullbackDuration: 0,
       finalCompleteDrawMaxDuration: 50,
-      finalIncrementalDrawMaxDuration: 20
+      finalIncrementalDrawMaxDuration: 20,
+      interactionHandler: "hammerjs"
     });
     this.tree = tree;
 
