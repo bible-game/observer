@@ -30,7 +30,7 @@ export class AppComponent implements AfterViewInit {
       descriptionGroupType: "floating",
       descriptionGroupMinHeight: 64,
       descriptionGroupMaxHeight: 0.125,
-      groupBorderWidth: 2,
+      groupBorderWidth: 8,
       groupBorderRadius: 0.55,
       groupInsetWidth: 2,
       groupLabelMinFontSize: 0,
@@ -82,7 +82,6 @@ export class AppComponent implements AfterViewInit {
         label: test.name,
         open: true,
         weight: this.getTestamentWeight(test),
-
       })
     }
 
