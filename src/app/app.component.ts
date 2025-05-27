@@ -17,8 +17,6 @@ export class AppComponent implements AfterViewInit {
   tree: any;
   config: any;
 
-  // TODO :: play with features / styling...
-
   constructor(private configService: ConfigService) {}
 
   async ngAfterViewInit() {
@@ -35,7 +33,7 @@ export class AppComponent implements AfterViewInit {
       descriptionGroupMaxHeight: 0.125,
       groupBorderWidth: 10,
       groupBorderRadius: 0.55,
-      groupInsetWidth: 6,
+      groupInsetWidth: 2,
       groupLabelMinFontSize: 0,
       groupLabelMaxFontSize: 16,
       rectangleAspectRatioPreference: 0,
@@ -79,12 +77,7 @@ export class AppComponent implements AfterViewInit {
     const testaments: any[] = [];
 
     for (const test of this.config.testaments) {
-      testaments.push({
-        id: test.name.toLowerCase(),
-        groups: this.getDivisions(test.divisions),
-        label: test.name,
-        weight: this.getTestamentWeight(test),
-      })
+      testaments.push(...this.getDivisions(test.divisions))
     }
 
     return { groups: testaments }
