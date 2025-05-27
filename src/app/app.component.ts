@@ -73,16 +73,13 @@ export class AppComponent implements AfterViewInit {
       onGroupHover: function (event: any) {
         if (!!event.group) {
           tree.open(event.group.id);
-
-          const close = () => {
-            tree.set("open", {groups: [...books, ...divisions], open: false, keepPrevious: true});
-            tree.open(event.group.id);
-            tree.open(event.bottommostOpenGroup.id);
-          }
-
-          window.setTimeout(close, 3000);
         }
-      } // update to function off of zoom in/out...
+      },
+      onGroupMouseWheel: function (event: any) {
+        if (event.delta < 0) {
+          tree.set("open", { groups: [...books, ...divisions], open: false, keepPrevious: true});
+        }
+      }
     });
     this.tree = tree;
 
