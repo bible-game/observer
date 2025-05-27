@@ -76,7 +76,14 @@ export class AppComponent implements AfterViewInit {
     const testaments: any[] = [];
 
     for (const test of this.config.testaments) {
-      testaments.push(...this.getDivisions(test.divisions))
+      testaments.push({
+        id: test.name,
+        groups: this.getDivisions(test.divisions),
+        label: test.name,
+        open: true,
+        weight: this.getTestamentWeight(test),
+
+      })
     }
 
     return { groups: testaments }
