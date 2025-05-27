@@ -31,7 +31,7 @@ export class AppComponent implements AfterViewInit {
       descriptionGroupType: "floating",
       descriptionGroupMinHeight: 64,
       descriptionGroupMaxHeight: 0.125,
-      groupBorderWidth: 10,
+      groupBorderWidth: 2,
       groupBorderRadius: 0.55,
       groupInsetWidth: 2,
       groupLabelMinFontSize: 0,
