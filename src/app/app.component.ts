@@ -26,7 +26,6 @@ export class AppComponent implements AfterViewInit {
       id: "tree",
       dataObject: this.data,
       layoutByWeightOrder: false,
-      stacking: "flattened",
       relaxationInitializer: "treemap",
       descriptionGroupType: "floating",
       descriptionGroupMinHeight: 64,
@@ -91,6 +90,7 @@ export class AppComponent implements AfterViewInit {
         id: d.name.toLowerCase().replace(/\s/g, '-'),
         groups: this.getBooks(d.books),
         label: d.name,
+        open: true,
         weight: this.getDivisionWeight(d),
       })
     }
@@ -105,6 +105,7 @@ export class AppComponent implements AfterViewInit {
       books.push({
         id: b.key,
         label: b.name,
+        open: true,
         groups: this.getChapters(b, b.chapters),
         weight: this.getBookWeight(b),
       })
