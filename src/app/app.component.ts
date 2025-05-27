@@ -29,16 +29,18 @@ export class AppComponent implements AfterViewInit {
       dataObject: this.data,
       layoutByWeightOrder: false,
       stacking: "flattened",
-      layout: "ordered",
-      descriptionGroupMinHeight: 0,
-      descriptionGroupMaxHeight: 0,
+      relaxationInitializer: "order",
+      descriptionGroupType: "floating",
+      descriptionGroupMinHeight: 64,
+      descriptionGroupMaxHeight: 0.25,
       groupBorderWidth: 0,
       groupBorderRadius: 0,
+      groupInsetWidth: 6,
       groupLabelMinFontSize: 0,
-      groupLabelMaxFontSize: 12,
+      groupLabelMaxFontSize: 16,
       rectangleAspectRatioPreference: 0,
-      groupLabelDarkColor: "#ccd9ff",
-      groupLabelLightColor: "#181a59",
+      groupLabelDarkColor: "#98a7d8",
+      groupLabelLightColor: "#060842",
       groupLabelColorThreshold: 0.75,
       parentFillOpacity: 0,
       groupColorDecorator: function (opts: any, params: any, vars: any) {
@@ -65,7 +67,7 @@ export class AppComponent implements AfterViewInit {
       testaments.push({
         id: test.name.toLowerCase(),
         groups: this.getDivisions(test.divisions),
-        description: false,
+        label: test.name,
         weight: this.getTestamentWeight(test),
       })
     }
@@ -81,7 +83,7 @@ export class AppComponent implements AfterViewInit {
       divisions.push({
         id: d.name.toLowerCase().replace(/\s/g, '-'),
         groups: this.getBooks(d.books),
-        description: false,
+        label: d.name,
         weight: this.getDivisionWeight(d),
       })
     }
@@ -95,7 +97,7 @@ export class AppComponent implements AfterViewInit {
     for (const b of bk) {
       books.push({
         id: b.key,
-        description: false,
+        label: b.name,
         groups: this.getChapters(b, b.chapters),
         weight: this.getBookWeight(b),
       })
