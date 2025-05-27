@@ -21,6 +21,8 @@ export class AppComponent implements AfterViewInit {
 
   async ngAfterViewInit() {
     this.config = await this.configService.getBibleConfig();
+    const divisions = this.getDivKeys();
+    const books = this.getBookKeys();
 
     const tree = new FoamTree({
       id: "tree",
@@ -39,7 +41,7 @@ export class AppComponent implements AfterViewInit {
       groupLabelDarkColor: "#98a7d8",
       groupLabelLightColor: "#060842",
       groupLabelColorThreshold: 0.75,
-      parentFillOpacity: 0,
+      parentFillOpacity: 1,
       groupColorDecorator: function (opts: any, params: any, vars: any) {
         vars.groupColor = params.group.color;
         vars.labelColor = "auto";
@@ -55,10 +57,22 @@ export class AppComponent implements AfterViewInit {
       // finalIncrementalDrawMaxDuration: 20,
       // interactionHandler: "hammerjs"
 
+      // Roll out in groups
+      rolloutMethod: "groups",
+
+      onRolloutComplete: function () {
+        console.log("hit!");
+        tree.set("open", { open: false, groups: [...divisions, ...books] });
+      },
       onGroupClick: function (event: any) {
         const url = `https://dev.bible.game/read/${event.group.id}`;
         window.open(url, '_blank');
 
+      },
+      openCloseDuration: 1000,
+      onGroupHover: function (event: any) {
+        console.log(event)
+        if (!!event.group) tree.open(event.group.id);
       }
     });
     this.tree = tree;
@@ -82,6 +96,7 @@ export class AppComponent implements AfterViewInit {
         label: test.name,
         open: true,
         weight: this.getTestamentWeight(test),
+        unselectable: true
       })
     }
 
@@ -98,6 +113,8 @@ export class AppComponent implements AfterViewInit {
         label: d.name,
         open: true,
         weight: this.getDivisionWeight(d),
+        color: this.getColour(d.books[0].key),
+        unselectable: true
       })
     }
 
@@ -114,6 +131,8 @@ export class AppComponent implements AfterViewInit {
         open: true,
         groups: this.getChapters(b, b.chapters),
         weight: this.getBookWeight(b),
+        color: this.getColour(b.key),
+        unselectable: true
       })
     }
 
@@ -163,6 +182,33 @@ export class AppComponent implements AfterViewInit {
     }
 
     return weight;
+  }
+
+  getDivKeys(): any[] {
+    const div = [];
+
+    for (const test of this.config.testaments) {
+      for (const d of test.divisions) {
+        div.push(d.name.toLowerCase().replace(/\s/g, '-'))
+      }
+    }
+
+    return div;
+  }
+
+  getBookKeys(): any[] {
+    const book = [];
+
+    for (const test of this.config.testaments) {
+      for (const d of test.divisions) {
+        for (const bk of d.books) {
+          book.push(bk.key)
+        }
+      }
+    }
+
+    console.log(book)
+    return book;
   }
 
   getColour(book: string): any {
