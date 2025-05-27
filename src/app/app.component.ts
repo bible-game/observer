@@ -29,7 +29,7 @@ export class AppComponent implements AfterViewInit {
       dataObject: this.data,
       layoutByWeightOrder: false,
       stacking: "flattened",
-      relaxationInitializer: "order",
+      relaxationInitializer: "treemap",
       descriptionGroupType: "floating",
       descriptionGroupMinHeight: 64,
       descriptionGroupMaxHeight: 0.125,
@@ -47,7 +47,14 @@ export class AppComponent implements AfterViewInit {
         vars.groupColor = params.group.color;
         vars.labelColor = "auto";
       },
-      groupFillType: "plain"
+      groupFillType: "plain",
+
+      relaxationVisible: false,
+      relaxationQualityThreshold: 5,
+      rolloutDuration: 0,
+      pullbackDuration: 0,
+      finalCompleteDrawMaxDuration: 50,
+      finalIncrementalDrawMaxDuration: 20
     });
     this.tree = tree;
 
