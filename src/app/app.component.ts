@@ -57,7 +57,7 @@ export class AppComponent implements AfterViewInit {
       // interactionHandler: "hammerjs"
 
       onGroupClick: function (event: any) {
-        const url = `https://www.biblegateway.com/passage/?search=${event.group.id}`;
+        const url = `https://dev.bible.game/read/${event.group.id}`;
         window.open(url, '_blank');
 
       }
@@ -118,7 +118,7 @@ export class AppComponent implements AfterViewInit {
 
     for (let c = 1; c <= ch; c++) {
       chapters.push({
-        id: book.key+c.toString(),
+        id: book.key+'/'+c.toString(),
         label: c,
         weight: parseFloat(book.verses[c-1]),
         color: this.getColour(book.key)
