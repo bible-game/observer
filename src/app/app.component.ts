@@ -49,13 +49,20 @@ export class AppComponent implements AfterViewInit {
       },
       groupFillType: "plain",
 
-      relaxationVisible: false,
-      relaxationQualityThreshold: 5,
-      rolloutDuration: 0,
-      pullbackDuration: 0,
-      finalCompleteDrawMaxDuration: 50,
-      finalIncrementalDrawMaxDuration: 20,
-      interactionHandler: "hammerjs"
+      // mobile optimisation
+      // relaxationVisible: false,
+      // relaxationQualityThreshold: 5,
+      // rolloutDuration: 0,
+      // pullbackDuration: 0,
+      // finalCompleteDrawMaxDuration: 50,
+      // finalIncrementalDrawMaxDuration: 20,
+      // interactionHandler: "hammerjs"
+
+      onGroupClick: function (event: any) {
+        const url = `https://www.biblegateway.com/passage/?search=${event.group.id}`;
+        window.open(url, '_blank');
+
+      }
     });
     this.tree = tree;
 
@@ -80,7 +87,6 @@ export class AppComponent implements AfterViewInit {
       })
     }
 
-    console.log(testaments);
     return { groups: testaments }
   }
 
@@ -119,7 +125,7 @@ export class AppComponent implements AfterViewInit {
 
     for (let c = 1; c <= ch; c++) {
       chapters.push({
-        id: c.toString(),
+        id: book.key+c.toString(),
         label: c,
         weight: parseFloat(book.verses[c-1]),
         color: this.getColour(book.key)
