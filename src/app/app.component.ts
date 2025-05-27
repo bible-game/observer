@@ -29,11 +29,23 @@ export class AppComponent implements AfterViewInit {
       dataObject: this.data,
       layoutByWeightOrder: false,
       stacking: "flattened",
-      relaxationInitializer: "order",
-      descriptionGroupSize: 0,
+      layout: "ordered",
+      descriptionGroupMinHeight: 0,
+      descriptionGroupMaxHeight: 0,
       groupBorderWidth: 0,
-      groupInsetWidth: 0,
-      rectangleAspectRatioPreference: 0
+      groupBorderRadius: 0,
+      groupLabelMinFontSize: 0,
+      groupLabelMaxFontSize: 12,
+      rectangleAspectRatioPreference: 0,
+      groupLabelDarkColor: "#ccd9ff",
+      groupLabelLightColor: "#181a59",
+      groupLabelColorThreshold: 0.75,
+      parentFillOpacity: 0,
+      groupColorDecorator: function (opts: any, params: any, vars: any) {
+        vars.groupColor = params.group.color;
+        vars.labelColor = "auto";
+      },
+      groupFillType: "gradient"
     });
     this.tree = tree;
 
@@ -53,7 +65,7 @@ export class AppComponent implements AfterViewInit {
       testaments.push({
         id: test.name.toLowerCase(),
         groups: this.getDivisions(test.divisions),
-        label: test.name,
+        description: false,
         weight: this.getTestamentWeight(test),
       })
     }
@@ -69,7 +81,7 @@ export class AppComponent implements AfterViewInit {
       divisions.push({
         id: d.name.toLowerCase().replace(/\s/g, '-'),
         groups: this.getBooks(d.books),
-        label: d.name,
+        description: false,
         weight: this.getDivisionWeight(d),
       })
     }
@@ -83,9 +95,9 @@ export class AppComponent implements AfterViewInit {
     for (const b of bk) {
       books.push({
         id: b.key,
-        label: b.name,
+        description: false,
         groups: this.getChapters(b, b.chapters),
-        weight: this.getBookWeight(b)
+        weight: this.getBookWeight(b),
       })
     }
 
@@ -99,7 +111,8 @@ export class AppComponent implements AfterViewInit {
       chapters.push({
         id: c.toString(),
         label: c,
-        weight: parseFloat(book.verses[c-1])
+        weight: parseFloat(book.verses[c-1]),
+        color: this.getColour(book.key)
       })
     }
 
@@ -134,6 +147,88 @@ export class AppComponent implements AfterViewInit {
     }
 
     return weight;
+  }
+
+  getColour(book: string): any {
+    const colour: any = {
+      "GEN": "#36ABFF",
+      "EXO": "#36ABFF",
+      "LEV": "#36ABFF",
+      "NUM": "#36ABFF",
+      "DEU": "#36ABFF",
+
+      "JOS": "#8967F6",
+      "JDG": "#8967F6",
+      "RUT": "#8967F6",
+      "1SA": "#8967F6",
+      "2SA": "#8967F6",
+      "1KI": "#8967F6",
+      "2KI": "#8967F6",
+      "1CH": "#8967F6",
+      "2CH": "#8967F6",
+      "EZR": "#8967F6",
+      "NEH": "#8967F6",
+      "EST": "#8967F6",
+
+      "JOB": "#C54A84",
+      "PSA": "#C54A84",
+      "PRO": "#C54A84",
+      "ECC": "#C54A84",
+      "SNG": "#C54A84",
+
+      "ISA": "#4DBA7E",
+      "JER": "#4DBA7E",
+      "LAM": "#4DBA7E",
+      "EZK": "#4DBA7E",
+      "DAN": "#4DBA7E",
+
+      "HOS": "#D0B42B",
+      "JOL": "#D0B42B",
+      "AMO": "#D0B42B",
+      "OBA": "#D0B42B",
+      "JON": "#D0B42B",
+      "MIC": "#D0B42B",
+      "NAM": "#D0B42B",
+      "HAB": "#D0B42B",
+      "ZEP": "#D0B42B",
+      "HAG": "#D0B42B",
+      "ZEC": "#D0B42B",
+      "MAL": "#D0B42B",
+
+      "MAT": "#D0B42B",
+      "MRK": "#D0B42B",
+      "LUK": "#D0B42B",
+      "JHN": "#D0B42B",
+
+      "ACT": "#4DBA7E",
+
+      "ROM": "#36ABFF",
+      "1CO": "#36ABFF",
+      "2CO": "#36ABFF",
+      "GAL": "#36ABFF",
+      "EPH": "#36ABFF",
+      "PHP": "#36ABFF",
+      "COL": "#36ABFF",
+      "1TH": "#36ABFF",
+      "2TH": "#36ABFF",
+      "1TI": "#36ABFF",
+      "2TI": "#36ABFF",
+      "TIT": "#36ABFF",
+      "PHM": "#36ABFF",
+      "HEB": "#36ABFF",
+
+      "JAS": "#C54A84",
+      "1PE": "#C54A84",
+      "2PE": "#C54A84",
+      "1JN": "#C54A84",
+      "2JN": "#C54A84",
+      "3JN": "#C54A84",
+      "JUD": "#C54A84",
+
+      "REV": "#8967F6"
+    }
+
+    return colour[book];
   }
 
 }
