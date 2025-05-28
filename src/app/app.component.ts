@@ -17,7 +17,7 @@ export class AppComponent implements AfterViewInit {
   tree: any;
   config: any;
 
-  // TODO :: actions (define zoom zones?), mobile friendly
+  // TODO :: actions (define zoom zones?), mobile friendly <--
 
   constructor(private configService: ConfigService) {}
 
@@ -52,13 +52,13 @@ export class AppComponent implements AfterViewInit {
       groupLabelFontFamily: "inter",
 
       // mobile optimisation
-      relaxationVisible: false,
-      relaxationQualityThreshold: 5,
-      rolloutDuration: 0,
-      pullbackDuration: 0,
-      finalCompleteDrawMaxDuration: 50,
-      finalIncrementalDrawMaxDuration: 20,
-      interactionHandler: "hammerjs",
+      // relaxationVisible: false,
+      // relaxationQualityThreshold: 5,
+      // rolloutDuration: 0,
+      // pullbackDuration: 0,
+      // finalCompleteDrawMaxDuration: 50,
+      // finalIncrementalDrawMaxDuration: 20,
+      // interactionHandler: "hammerjs",
 
       // Roll out in groups
       rolloutMethod: "groups",
