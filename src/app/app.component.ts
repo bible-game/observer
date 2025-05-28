@@ -48,7 +48,7 @@ export class AppComponent implements AfterViewInit {
         vars.groupColor = params.group.color;
         vars.labelColor = "auto";
       },
-      groupFillType: "gradient",
+      groupFillType: "plain",
       groupLabelFontFamily: "inter",
 
       // mobile optimisation
