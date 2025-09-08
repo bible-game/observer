@@ -23,6 +23,7 @@ import { HudComponent } from './components/hud/hud.component';
     <div class="edit-bar" style="position:fixed; top:10px; right:10px; z-index:10;">
       <button (click)="toggleEdit()" class="btn">Edit: {{ edit.enabled ? 'ON' : 'OFF' }}</button>
       <button (click)="downloadStars()" class="btn" [disabled]="!edit.enabled">Download JSON</button>
+      <button (click)="setHorizonLock()" class="btn" >Un/lock Horizon</button>
     </div>
 
   `,
@@ -45,6 +46,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   private constellations!: THREE.Group;
   private labels!: THREE.Group;
   private rafId = 0;
+  private horizonLocked = true;
 
   constructor(private astronomyService: AstronomyService) {}
 
@@ -341,5 +343,22 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     document.body.appendChild(a); a.click();
     a.remove(); URL.revokeObjectURL(url);
   }
+
+  setHorizonLock() {
+    this.horizonLocked = !this.horizonLocked;
+
+    if (this.horizonLocked) {
+      const EPS = THREE.MathUtils.degToRad(0.5);
+      this.controls.minPolarAngle = EPS;               // up to zenith
+      this.controls.maxPolarAngle = Math.PI / 2 - EPS; // stop at horizon
+    } else {
+      this.controls.minPolarAngle = 0;
+      this.controls.maxPolarAngle = Math.PI;
+    }
+    this.controls.minAzimuthAngle = -Infinity;
+    this.controls.maxAzimuthAngle =  Infinity;
+    this.controls.update();
+  }
+
 
 }
