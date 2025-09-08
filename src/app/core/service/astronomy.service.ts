@@ -37,6 +37,8 @@ export class AstronomyService {
 
   private starsData?: BibleStar[];
   private starsDataPromise?: Promise<BibleStar[]>;
+  // Keep a single manager (or extend to support multiple groups if you like)
+  private _labelMgr?: _LabelSizeManager;
 
   // --- PUBLIC API -----------------------------------------------------------
 
@@ -404,6 +406,10 @@ export class AstronomyService {
     return st;
   }
 
+  public updateLabelAutoSizingGroup(group?: THREE.Group) {
+    this._labelMgr?.setGroup(group);
+  }
+
   /** Pick a consistent color for a book/chapters' division. */
   private pickDivisionColor(list: Array<{ division?: string; division_color?: string }>): number {
     // 1) Prefer explicit hex from data (first non-empty)
@@ -655,6 +661,179 @@ export class AstronomyService {
       const spr = child as THREE.Sprite;
       if ((spr as any).isSprite) this.fitSpriteToPixels(spr, camera, renderer);
     }
+  }
+
+  public startLabelAutoSizing(
+    group: THREE.Group | undefined,
+    camera: THREE.PerspectiveCamera,
+    renderer: THREE.WebGLRenderer,
+    controls?: any,
+    opts: Partial<LabelAutoSizeOptions> = {}
+  ) {
+    if (!group) {
+      console.warn('[labels] startLabelAutoSizing called without a group; ignoring until group is set.');
+      return;
+    }
+    this._labelMgr?.stop();
+    this._labelMgr = new _LabelSizeManager(this, group, camera, renderer, controls, opts);
+    this._labelMgr.start();
+  }
+
+  /** Stop auto-sizing/fading. */
+  public stopLabelAutoSizing() {
+    this._labelMgr?.stop();
+    this._labelMgr = undefined;
+  }
+
+  /** Ask the manager to run a refresh on the next frame (e.g., after changing FOV). */
+  public scheduleLabelRefresh() {
+    this._labelMgr?.schedule();
+  }
+
+  /** Update options on the fly (e.g., from a HUD). */
+  public setLabelAutoSizeOptions(opts: Partial<LabelAutoSizeOptions>) {
+    this._labelMgr?.setOptions(opts);
+    this._labelMgr?.schedule();
+  }
+
+
+}
+
+// Keep this file-local (not exported)
+type LabelAutoSizeOptions = {
+  // size behavior
+  basePx?: number;       // nominal label height at FOV=90 (default 22)
+  minPx?: number;        // clamp (default 16)
+  maxPx?: number;        // clamp (default 28)
+  strength?: number;     // FOV adaptation 0..1 (default 0.25)
+  retargetLowRatio?: number;   // rebuild texture if targetPx/cssH < this (default 0.75)
+  retargetHighRatio?: number;  // rebuild texture if targetPx/cssH > this (default 1.33)
+  // declutter behavior
+  baseMaxLabels?: number;  // max labels at FOV=90 on ~720p (default 80)
+  minLabels?: number;      // clamp (default 30)
+  maxLabels?: number;      // clamp (default 160)
+  fovExponent?: number;    // FOV influence on label count (default 0.8)
+  baseRadius?: number;     // declutter radius in NDC (default 0.62)
+  radiusSpread?: number;   // how radius grows toward wide FOV (default 0.08)
+  fadeInMs?: number;       // default 160
+  fadeOutMs?: number;      // default 240
+  fadeThrottleMs?: number; // default 100
+};
+
+class _LabelSizeManager {
+  private running = false;
+  private raf = 0;
+  private onControlsChange = () => this.schedule();
+  private onResize = () => this.schedule();
+
+  constructor(
+    private svc: any,                          // AstronomyService
+    private group: THREE.Group,
+    private camera: THREE.PerspectiveCamera,
+    private renderer: THREE.WebGLRenderer,
+    private controls?: any,
+    private opts: LabelAutoSizeOptions = {}
+  ) {}
+
+  start() {
+    if (this.running) return;
+    this.running = true;
+    window.addEventListener('resize', this.onResize, { passive: true });
+    this.controls?.addEventListener?.('change', this.onControlsChange);
+    this.refreshNow(); // initial pass
+  }
+  stop() {
+    if (!this.running) return;
+    this.running = false;
+    window.removeEventListener('resize', this.onResize as any);
+    this.controls?.removeEventListener?.('change', this.onControlsChange as any);
+    if (this.raf) cancelAnimationFrame(this.raf), (this.raf = 0);
+  }
+  setOptions(opts: Partial<LabelAutoSizeOptions>) {
+    this.opts = { ...this.opts, ...opts };
+    this.schedule();
+  }
+  schedule() {
+    if (!this.running || this.raf) return;
+    this.raf = requestAnimationFrame(() => { this.raf = 0; this.refreshNow(); });
+  }
+
+  setGroup(group?: THREE.Group) {
+    this.group = group as any;
+    this.schedule();
+  }
+
+  // inside AstronomyService
+  refreshNow() {
+    // ----- guards: bail early if anything we need is missing -----
+    const group = this.group as THREE.Group | undefined;
+    const camera = this.camera as THREE.PerspectiveCamera | undefined;
+    const renderer = this.renderer as THREE.WebGLRenderer | undefined;
+    if (!group || !camera || !renderer || !(group as any).isObject3D) return;
+
+    // ----- A) Adaptive pixel-perfect sizing -----
+    const basePx = this.opts.basePx ?? 22;
+    const minPx  = this.opts.minPx  ?? 16;
+    const maxPx  = this.opts.maxPx  ?? 28;
+    const k      = this.opts.strength ?? 0.25;
+    const loR    = this.opts.retargetLowRatio  ?? 0.75;
+    const hiR    = this.opts.retargetHighRatio ?? 1.33;
+
+    const targetPx = THREE.MathUtils.clamp(
+      basePx * Math.pow(90 / camera.fov, k),
+      minPx, maxPx
+    );
+
+    const worldPos = new THREE.Vector3();
+    const children = (group.children ?? []) as THREE.Object3D[];
+    for (const child of children) {
+      const spr = child as THREE.Sprite;
+      const ud = (spr as any)?.userData;
+      if (!(spr as any)?.isSprite || !ud?.cssW || !ud?.cssH) continue;
+
+      const ratio = targetPx / ud.cssH;
+      if (ratio < loR || ratio > hiR) {
+        const newFont = Math.round(targetPx);
+        this.svc.retargetSpriteTexture(spr, newFont);
+      }
+
+      spr.getWorldPosition(worldPos);
+      const wuPerPx = this.svc['worldUnitsPerCssPixel'](camera, renderer, worldPos);
+      const factor = targetPx / ud.cssH;
+      spr.scale.set(ud.cssW * wuPerPx * factor, ud.cssH * wuPerPx * factor, 1);
+    }
+
+    // ----- B) Dynamic declutter/fading -----
+    const baseMax = this.opts.baseMaxLabels ?? 80;
+    const minLab  = this.opts.minLabels ?? 30;
+    const maxLab  = this.opts.maxLabels ?? 160;
+    const exp     = this.opts.fovExponent ?? 0.8;
+
+    const fovFactor = Math.pow(90 / camera.fov, exp);
+    const canvas = renderer.domElement;
+    if (!canvas) return;
+
+    const areaFactor = Math.sqrt(
+      (canvas.clientWidth * canvas.clientHeight) / (1280 * 720)
+    );
+
+    const dynamicMax = THREE.MathUtils.clamp(
+      Math.round(baseMax * fovFactor * areaFactor),
+      minLab, maxLab
+    );
+
+    const baseR   = this.opts.baseRadius ?? 0.62;
+    const spread  = this.opts.radiusSpread ?? 0.08;
+    const fovT    = (camera.fov - 90) / (175 - 1);
+    const dynRadius = THREE.MathUtils.clamp(baseR + spread * fovT, 0.48, 0.78);
+
+    this.svc.updateLabelFading(group, camera, {
+      maxLabels: dynamicMax,
+      radius: dynRadius,
+      throttleMs: this.opts.fadeThrottleMs ?? 100,
+      fadeInMs: this.opts.fadeInMs ?? 160,
+      fadeOutMs: this.opts.fadeOutMs ?? 240
+    });
   }
 
 }

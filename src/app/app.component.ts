@@ -48,6 +48,40 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   private rafId = 0;
   private horizonLocked = true;
 
+  // --- Add these fields ---
+  private readonly DEFAULT_FOV = 90;
+  private readonly MIN_FOV = 1;     // practical lower bound
+  private readonly MAX_FOV = 175;   // must be < 180
+  private readonly FOV_SENS = 0.04; // deg change per wheel deltaY unit
+
+  private onWheelFov = (ev: WheelEvent) => {
+    // Prevent page scroll while zooming the sky
+    ev.preventDefault();
+
+    // Trackpad pinch on macOS sends wheel with ctrlKey=true – slow it down a bit
+    const speed = (ev.ctrlKey ? 0.15 : 1) * this.FOV_SENS;
+
+    // Wheel "down" (positive deltaY) -> increase fov (zoom out)
+    const next = THREE.MathUtils.clamp(this.camera.fov + ev.deltaY * speed, this.MIN_FOV, this.MAX_FOV);
+
+    if (next !== this.camera.fov) {
+      this.camera.fov = next;
+      this.camera.updateProjectionMatrix();
+
+      // Keep label sprites pixel-perfect if you use the crisp label helpers
+      if (this.labels) this.astronomyService.fitSpriteGroupToPixels(this.labels, this.camera, this.renderer);
+
+      // If you have a HUD fov slider bound to onFovChange, you can sync it here (optional)
+      // this.hud?.setFov(next);
+    }
+  };
+
+  private onDblClickResetFov = () => {
+    this.camera.fov = this.DEFAULT_FOV;
+    this.camera.updateProjectionMatrix();
+    if (this.labels) this.astronomyService.fitSpriteGroupToPixels(this.labels, this.camera, this.renderer);
+  };
+
   constructor(private astronomyService: AstronomyService) {}
 
   ngAfterViewInit() {
@@ -65,6 +99,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     el.addEventListener('dblclick', this.onDblClickResetFov);
   }
   ngOnDestroy() {
+    this.astronomyService.stopLabelAutoSizing();
+
     window.removeEventListener('resize', this.onWindowResize);
     cancelAnimationFrame(this.rafId);
     this.controls?.dispose();
@@ -116,6 +152,19 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.groundGroup = new THREE.Group();
     this.scene.add(this.groundGroup);
     this.scene.add(this.skyGroup);
+
+// start auto sizing + fading (kept entirely in the service)
+    this.astronomyService.startLabelAutoSizing(
+      this.labels,
+      this.camera,
+      this.renderer,
+      this.controls, // optional; enables automatic scheduling on orbit changes
+      {
+        basePx: 22, minPx: 16, maxPx: 28, strength: 0.25,
+        baseMaxLabels: 80, minLabels: 30, maxLabels: 150, fovExponent: 0.85,
+        baseRadius: 0.62, radiusSpread: 0.08, fadeInMs: 160, fadeOutMs: 240
+      }
+    );
   }
 
   /** Ground hemisphere + soft horizon glow */
@@ -372,39 +421,5 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.controls.maxAzimuthAngle =  Infinity;
     this.controls.update();
   }
-
-  // --- Add these fields ---
-  private readonly DEFAULT_FOV = 90;
-  private readonly MIN_FOV = 1;     // practical lower bound
-  private readonly MAX_FOV = 175;   // must be < 180
-  private readonly FOV_SENS = 0.04; // deg change per wheel deltaY unit
-
-  private onWheelFov = (ev: WheelEvent) => {
-    // Prevent page scroll while zooming the sky
-    ev.preventDefault();
-
-    // Trackpad pinch on macOS sends wheel with ctrlKey=true – slow it down a bit
-    const speed = (ev.ctrlKey ? 0.15 : 1) * this.FOV_SENS;
-
-    // Wheel "down" (positive deltaY) -> increase fov (zoom out)
-    const next = THREE.MathUtils.clamp(this.camera.fov + ev.deltaY * speed, this.MIN_FOV, this.MAX_FOV);
-
-    if (next !== this.camera.fov) {
-      this.camera.fov = next;
-      this.camera.updateProjectionMatrix();
-
-      // Keep label sprites pixel-perfect if you use the crisp label helpers
-      if (this.labels) this.astronomyService.fitSpriteGroupToPixels(this.labels, this.camera, this.renderer);
-
-      // If you have a HUD fov slider bound to onFovChange, you can sync it here (optional)
-      // this.hud?.setFov(next);
-    }
-  };
-
-  private onDblClickResetFov = () => {
-    this.camera.fov = this.DEFAULT_FOV;
-    this.camera.updateProjectionMatrix();
-    if (this.labels) this.astronomyService.fitSpriteGroupToPixels(this.labels, this.camera, this.renderer);
-  };
 
 }
