@@ -67,64 +67,72 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  // ---------------- Init ----------------
   private initThree() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
 
-    // Put camera essentially at the center of the celestial sphere
-    this.camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 5000);
+    // Camera at the center of the dome (slightly offset so it's not exactly on target)
+    this.camera = new THREE.PerspectiveCamera(
+      90,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      5000
+    );
     this.camera.position.set(0, 0, 0.01);
+    this.camera.up.set(0, 1, 0); // *** zenith is +Y ***
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setClearColor(0x000000, 1);
     this.rendererContainer.nativeElement.appendChild(this.renderer.domElement);
+    (this.renderer.domElement.style as any).touchAction = 'none';
 
+    // OrbitControls
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableZoom = false;
-    this.controls.enablePan = false;
+    this.controls.target.set(0, 0, 0);
     this.controls.enableRotate = true;
+    this.controls.enablePan = false;
+    this.controls.enableZoom = false;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.07;
+    this.controls.screenSpacePanning = false;
 
-    // Aim at the center of the sky dome
-    this.controls.target.set(0, 0, 0);
-
-// Allow looking all the way up (zenith), but block below the horizon
-    const EPS = THREE.MathUtils.degToRad(0.5); // tiny cushion to avoid gimbal-y edge cases
-    this.controls.minPolarAngle = 0.0;                // 0 = straight up (see top of the sphere)
-    this.controls.maxPolarAngle = Math.PI / 2 - EPS;  // stop at horizon; no looking "down"
-
-// (optional) keep full 360° yaw
+    // Full 360° yaw
     this.controls.minAzimuthAngle = -Infinity;
     this.controls.maxAzimuthAngle =  Infinity;
 
-// keep these as you had:
-    this.controls.enablePan = false;
-    this.controls.enableZoom = false;
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.07;
+    // *** Allow zenith, block below-horizon ***
+    const EPS = THREE.MathUtils.degToRad(0.5);
+    this.controls.minPolarAngle = EPS;                 // ~0° (straight up)
+    this.controls.maxPolarAngle = Math.PI / 2 - EPS;   // ~90° (horizon)
+    this.controls.update(); // apply target/limits now
 
+    // Scene graph
     this.skyGroup = new THREE.Group();
     this.groundGroup = new THREE.Group();
+    this.scene.add(this.groundGroup);  // ground first (writes depth)
+    this.scene.add(this.skyGroup);     // sky rotates for time/latitude
 
-    // Depth order clarity: ground first (static), then sky (rotating)
-    this.scene.add(this.groundGroup);
-    this.scene.add(this.skyGroup);
+    // (Optional) quick zenith test: press 'Z' to snap camera straight up
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'z') {
+        const r = this.camera.position.length() || 0.01;
+        this.camera.position.set(0, r, 0.0001); // look straight up
+        this.controls.update();
+        console.log('Snapped to zenith. polar clamp', this.controls.minPolarAngle, this.controls.maxPolarAngle);
+      }
+    });
 
-    // Make sure the radius matches the sphere you placed your stars on.
-    // If you used ~990/1000 for stars, use the same here.
+    // Labels (unchanged)
     this.labels = this.astronomyService.createStarLabels(1000, {
-      useIcon: true,          // show the emoji from stars.json if present
-      fontSize: 22,           // tweak to taste
+      useIcon: true,
+      fontSize: 22,
       pad: 6,
       textColor: '#e5e7eb',
       bg: 'rgba(0,0,0,0.45)'
     });
     this.skyGroup.add(this.labels);
-
   }
 
   /** Ground hemisphere + soft horizon glow + skyline (Stellarium-like) */
@@ -132,11 +140,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     const r = 995;
 
     // 1) Inside-facing lower hemisphere that WRITES DEPTH (occludes stars below horizon)
-    const hemiGeo = new THREE.SphereGeometry(
-      r, 64, 32,
-      0, Math.PI * 2,
-      Math.PI / 2, Math.PI // only the lower half (y <= 0)
-    );
+    const hemiGeo = new THREE.SphereGeometry(r, 64, 32, 0, Math.PI*2, Math.PI/2, Math.PI) // lower half only
     hemiGeo.scale(-1, 1, 1); // invert normals to render from inside
 
     // Vertex color gradient: darker nadir → lighter near horizon
