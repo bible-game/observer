@@ -88,9 +88,24 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.controls.enableRotate = true;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.07;
-    // Clamp look so you cannot dip below the horizon
-    this.controls.minPolarAngle = 0.02;                // ≈ straight up (0 = zenith)
-    this.controls.maxPolarAngle = Math.PI / 2 - 0.01;  // stop at horizon
+
+    // Aim at the center of the sky dome
+    this.controls.target.set(0, 0, 0);
+
+// Allow looking all the way up (zenith), but block below the horizon
+    const EPS = THREE.MathUtils.degToRad(0.5); // tiny cushion to avoid gimbal-y edge cases
+    this.controls.minPolarAngle = 0.0;                // 0 = straight up (see top of the sphere)
+    this.controls.maxPolarAngle = Math.PI / 2 - EPS;  // stop at horizon; no looking "down"
+
+// (optional) keep full 360° yaw
+    this.controls.minAzimuthAngle = -Infinity;
+    this.controls.maxAzimuthAngle =  Infinity;
+
+// keep these as you had:
+    this.controls.enablePan = false;
+    this.controls.enableZoom = false;
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.07;
 
     this.skyGroup = new THREE.Group();
     this.groundGroup = new THREE.Group();
