@@ -645,5 +645,16 @@ export class AstronomyService {
     spr.scale.set(cssW * wuPerPx, cssH * wuPerPx, 1);
   }
 
+  /** Resize all Sprite children in a group so 1 canvas pixel = 1 screen pixel. */
+  public fitSpriteGroupToPixels(
+    group: THREE.Group,
+    camera: THREE.PerspectiveCamera,
+    renderer: THREE.WebGLRenderer
+  ) {
+    for (const child of group.children) {
+      const spr = child as THREE.Sprite;
+      if ((spr as any).isSprite) this.fitSpriteToPixels(spr, camera, renderer);
+    }
+  }
 
 }

@@ -56,12 +56,25 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.addSky();          // stars + book-constellations + labels
     this.animate();
     window.addEventListener('resize', this.onWindowResize);
+
+    this.controls.enableZoom = false; // keep dolly disabled so wheel controls FOV only
+
+    const el = this.renderer.domElement;
+    // passive:false so preventDefault works and the page doesn’t scroll
+    el.addEventListener('wheel', this.onWheelFov, { passive: false });
+    el.addEventListener('dblclick', this.onDblClickResetFov);
   }
   ngOnDestroy() {
     window.removeEventListener('resize', this.onWindowResize);
     cancelAnimationFrame(this.rafId);
     this.controls?.dispose();
     this.renderer?.dispose();
+
+    const el = this.renderer?.domElement;
+    if (el) {
+      el.removeEventListener('wheel', this.onWheelFov as any);
+      el.removeEventListener('dblclick', this.onDblClickResetFov as any);
+    }
   }
 
   // ------------------ setup ------------------
@@ -360,5 +373,38 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.controls.update();
   }
 
+  // --- Add these fields ---
+  private readonly DEFAULT_FOV = 90;
+  private readonly MIN_FOV = 1;     // practical lower bound
+  private readonly MAX_FOV = 175;   // must be < 180
+  private readonly FOV_SENS = 0.04; // deg change per wheel deltaY unit
+
+  private onWheelFov = (ev: WheelEvent) => {
+    // Prevent page scroll while zooming the sky
+    ev.preventDefault();
+
+    // Trackpad pinch on macOS sends wheel with ctrlKey=true – slow it down a bit
+    const speed = (ev.ctrlKey ? 0.15 : 1) * this.FOV_SENS;
+
+    // Wheel "down" (positive deltaY) -> increase fov (zoom out)
+    const next = THREE.MathUtils.clamp(this.camera.fov + ev.deltaY * speed, this.MIN_FOV, this.MAX_FOV);
+
+    if (next !== this.camera.fov) {
+      this.camera.fov = next;
+      this.camera.updateProjectionMatrix();
+
+      // Keep label sprites pixel-perfect if you use the crisp label helpers
+      if (this.labels) this.astronomyService.fitSpriteGroupToPixels(this.labels, this.camera, this.renderer);
+
+      // If you have a HUD fov slider bound to onFovChange, you can sync it here (optional)
+      // this.hud?.setFov(next);
+    }
+  };
+
+  private onDblClickResetFov = () => {
+    this.camera.fov = this.DEFAULT_FOV;
+    this.camera.updateProjectionMatrix();
+    if (this.labels) this.astronomyService.fitSpriteGroupToPixels(this.labels, this.camera, this.renderer);
+  };
 
 }
