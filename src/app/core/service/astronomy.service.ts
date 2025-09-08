@@ -3,14 +3,17 @@ import * as THREE from 'three';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
-// --- Declutter: show only labels near screen center and above horizon ---
-type DeclutterOpts = {
-  /** Max labels on screen */
+// ===== Label fading declutter =====
+type FadeDeclutterOpts = {
+  /** Max labels allowed on screen */
   maxLabels?: number;
-  /** NDC radius from center (0=center .. 1=screen corner); smaller = stricter */
+  /** NDC radius from center (0..1); smaller = stricter */
   radius?: number;
-  /** Throttle updates (ms) to save CPU */
+  /** How often (ms) to recompute "target alphas" with sorting */
   throttleMs?: number;
+  /** Fade-in / fade-out time constants (ms) */
+  fadeInMs?: number;
+  fadeOutMs?: number;
 };
 
 export type BibleStar = {
@@ -107,24 +110,62 @@ export class AstronomyService {
     return points;
   }
 
-  /** Constellations per book = line through its chapters (in order) */
-  createBookConstellations(radius = 1000): THREE.Group {
+  /** Constellations per book using MST + a few nearest-neighbor edges, with horizon fading. */
+  createBookConstellations(
+    radius = 1000,
+    opts: { extraNearestPerNode?: number; opacity?: number; fadeLow?: number; fadeHigh?: number } = {}
+  ): THREE.Group {
+    const { extraNearestPerNode = 1, opacity = 0.5, fadeLow = -80, fadeHigh = 120 } = opts;
     const group = new THREE.Group();
+
     this.loadStarsData().then(data => {
       const byBook = this.groupBy(data, s => s.book || s.name.split(' ')[0]);
-      for (const [book, arr] of byBook) {
-        const chapters = arr
-          .slice()
-          .sort((a,b) => (a.chapter ?? 0) - (b.chapter ?? 0));
+
+      for (const [bookKey, raw] of byBook) {
+        const chapters = raw.slice().sort((a,b) => (a.chapter ?? 0) - (b.chapter ?? 0));
         if (chapters.length < 2) continue;
 
-        const pts = chapters.map(s => this.raDecToVec(s.ra_h, s.dec_d, radius - 1));
-        const col = new THREE.Color(this.hexToRgb01(chapters[0].division_color || '#6ea8ff').map(x => x) as any);
-        const geo = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color: col.getHex(), transparent: true, opacity: 0.45 });
-        group.add(new THREE.Line(geo, mat));
+        // 3D points on sphere (slightly inside radius)
+        const P3 = chapters.map(s => this.raDecToVec(s.ra_h, s.dec_d, radius - 1).normalize());
+
+        // Local tangent-plane basis -> 2D coords
+        const { u, v, n } = this.computeLocalBasis(P3);
+        const P2 = P3.map(p => {
+          const pn = p.clone().sub(n.clone().multiplyScalar(p.dot(n))).normalize();
+          return new THREE.Vector2(pn.dot(u), pn.dot(v));
+        });
+
+        // Graph edges
+        const mst = this.mstEdges(P2);
+        const existing = new Set(mst.map(([i,j]) => (i<j?`${i}-${j}`:`${j}-${i}`)));
+        const extras = this.nearestNeighborEdges(P2, extraNearestPerNode, existing);
+        const edges = mst.concat(extras);
+
+        // Build line segments
+        const linePos = new Float32Array(edges.length * 2 * 3);
+        let k = 0;
+        for (const [i, j] of edges) {
+          const a = P3[i].clone().multiplyScalar(radius - 1);
+          const b = P3[j].clone().multiplyScalar(radius - 1);
+          linePos[k++] = a.x; linePos[k++] = a.y; linePos[k++] = a.z;
+          linePos[k++] = b.x; linePos[k++] = b.y; linePos[k++] = b.z;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+
+        // Division color for this book
+        const colorHex = this.pickDivisionColor(chapters) ?? 0x6ea8ff;
+
+        // Horizon-fading material
+        const mat = this.createLineMaterialWithHorizonFade(colorHex, opacity, fadeLow, fadeHigh);
+
+        const lines = new THREE.LineSegments(geo, mat);
+        lines.frustumCulled = false;
+        lines.renderOrder = 0;
+        group.add(lines);
       }
     });
+
     return group;
   }
 
@@ -249,58 +290,241 @@ export class AstronomyService {
     return new THREE.Sprite(mat);
   }
 
-  private _declutterLast = 0;
-  private _tmpWorld = new THREE.Vector3();
-  private _tmpNdc   = new THREE.Vector3();
+  private _fadeState = new WeakMap<THREE.Sprite, { alpha: number; target: number }>();
+  private _fadeLastCompute = 0;
+  private _fadeLastFrame = 0;
+  private _vecWorld = new THREE.Vector3();
+  private _vecNdc = new THREE.Vector3();
 
   /**
-   * Toggle visibility on label sprites inside `group` based on screen-center proximity.
-   * Call this in your render loop (it's internally throttled).
+   * Fade labels toward visibility based on center proximity & horizon test.
+   * Call this every frame from your render loop.
    */
-  updateLabelDecluttering(
-    group: THREE.Group,
-    camera: THREE.Camera,
-    opts: DeclutterOpts = {}
-  ) {
+  updateLabelFading(group: THREE.Group, camera: THREE.Camera, opts: FadeDeclutterOpts = {}) {
     const now = performance.now();
-    const throttleMs = opts.throttleMs ?? 120;
-    if (now - this._declutterLast < throttleMs) return;
-    this._declutterLast = now;
 
-    const radius = opts.radius ?? 0.65;     // 0.65 ≈ central circle
-    const max    = opts.maxLabels ?? 80;    // cap visible labels
+    const radius = opts.radius ?? 0.65;        // 0.55 tighter, 0.75 looser
+    const maxLabels = opts.maxLabels ?? 80;    // cap
+    const throttleMs = opts.throttleMs ?? 120; // compute targets ~8 Hz
+    const fadeInMs = Math.max(1, opts.fadeInMs ?? 180);
+    const fadeOutMs = Math.max(1, opts.fadeOutMs ?? 220);
 
-    // Collect candidates with their distance from screen center
-    const candidates: { i: number; d: number; spr: THREE.Sprite }[] = [];
-    const N = group.children.length;
+    // 1) Occasionally recompute "target alphas" (expensive sorting)
+    if (now - this._fadeLastCompute >= throttleMs) {
+      this._fadeLastCompute = now;
 
-    for (let i = 0; i < N; i++) {
-      const spr = group.children[i] as THREE.Sprite;
-      if (!spr) continue;
+      const candidates: { spr: THREE.Sprite; dist: number }[] = [];
 
-      // WORLD position (account for skyGroup rotation)
-      spr.getWorldPosition(this._tmpWorld);
+      for (const child of group.children) {
+        const spr = child as THREE.Sprite;
+        if (!spr) continue;
 
-      // Horizon cull (world y≤0 means below horizon plane)
-      if (this._tmpWorld.y <= 0.0) { spr.visible = false; continue; }
+        // Ensure sprite material supports opacity (once)
+        const mat = spr.material as THREE.SpriteMaterial;
+        mat.transparent = true;
+        mat.depthTest = true;
+        mat.depthWrite = false;
 
-      // Project to NDC
-      this._tmpNdc.copy(this._tmpWorld).project(camera);
+        // World space position (respects skyGroup rotation)
+        spr.getWorldPosition(this._vecWorld);
 
-      // Behind camera / outside clip
-      if (this._tmpNdc.z < -1.0 || this._tmpNdc.z > 1.0) { spr.visible = false; continue; }
+        // Horizon cull — labels below y<=0 fade out
+        if (this._vecWorld.y <= 0.0) {
+          this._ensureFadeState_(spr).target = 0.0;
+          continue;
+        }
 
-      const dist = Math.hypot(this._tmpNdc.x, this._tmpNdc.y); // 0 center .. ~1 corner
-      if (dist <= radius) candidates.push({ i, d: dist, spr });
-      else spr.visible = false; // outside circle
+        // Project to NDC
+        this._vecNdc.copy(this._vecWorld).project(camera);
+        if (this._vecNdc.z < -1.0 || this._vecNdc.z > 1.0) {
+          this._ensureFadeState_(spr).target = 0.0;
+          continue;
+        }
+
+        const dist = Math.hypot(this._vecNdc.x, this._vecNdc.y);
+        if (dist <= radius) candidates.push({ spr, dist });
+        else this._ensureFadeState_(spr).target = 0.0;
+      }
+
+      // Keep the closest K labels by center distance
+      candidates.sort((a, b) => a.dist - b.dist);
+      const K = Math.min(maxLabels, candidates.length);
+
+      for (let i = 0; i < candidates.length; i++) {
+        const { spr, dist } = candidates[i];
+        const st = this._ensureFadeState_(spr);
+        if (i < K) {
+          // Smooth ramp: 1 at center → 0 at radius
+          const t = dist / Math.max(1e-6, radius);
+          const w = 1.0 - smoothstep(0.3, 1.0, t); // softer near center
+          st.target = Math.max(0.0, Math.min(1.0, w));
+        } else {
+          st.target = 0.0;
+        }
+      }
+
+      function smoothstep(edge0: number, edge1: number, x: number) {
+        const t = Math.min(1, Math.max(0, (x - edge0) / Math.max(1e-6, edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      }
     }
 
-    // Show closest K; hide the rest
-    candidates.sort((a, b) => a.d - b.d);
-    for (let i = 0; i < candidates.length; i++) {
-      const { spr } = candidates[i];
-      spr.visible = i < max;
+    // 2) Every frame: ease alpha → target
+    const dt = Math.max(0, this._fadeLastFrame ? (now - this._fadeLastFrame) : 16);
+    this._fadeLastFrame = now;
+
+    for (const child of group.children) {
+      const spr = child as THREE.Sprite;
+      const st = this._fadeState.get(spr);
+      const mat = spr.material as THREE.SpriteMaterial;
+      if (!st || !mat) continue;
+
+      const target = st.target;
+      const tau = (target > st.alpha) ? fadeInMs : fadeOutMs; // different speeds
+      // Exponential smoothing toward target
+      const k = 1.0 - Math.exp(-dt / tau);
+      st.alpha += (target - st.alpha) * k;
+
+      // Apply opacity; toggle visibility only when essentially gone
+      mat.opacity = st.alpha;
+      spr.visible = st.alpha > 0.02;
     }
+  }
+
+  private _ensureFadeState_(spr: THREE.Sprite) {
+    let st = this._fadeState.get(spr);
+    if (!st) {
+      st = { alpha: 0.0, target: 0.0 };
+      this._fadeState.set(spr, st);
+      // start hidden
+      const mat = spr.material as THREE.SpriteMaterial;
+      if (mat) { mat.transparent = true; mat.opacity = 0.0; }
+      spr.visible = false;
+    }
+    return st;
+  }
+
+  /** Pick a consistent color for a book/chapters' division. */
+  private pickDivisionColor(list: Array<{ division?: string; division_color?: string }>): number {
+    // 1) Prefer explicit hex from data (first non-empty)
+    for (const s of list) {
+      if (s.division_color) {
+        const [r,g,b] = this.hexToRgb01(s.division_color);
+        return new THREE.Color(r, g, b).getHex();
+      }
+    }
+    // 2) Else hash the division name into a pleasant pastel
+    const divName = (list[0]?.division || 'Division').toLowerCase();
+    let h = 2166136261 >>> 0; // FNV-1a
+    for (let i = 0; i < divName.length; i++) {
+      h ^= divName.charCodeAt(i); h = Math.imul(h, 16777619);
+    }
+    // map hash → HSL then to RGB
+    const hue = (h % 360) / 360;           // 0..1
+    const sat = 0.45;                      // pastel-ish
+    const lit = 0.70;
+    const c = new THREE.Color().setHSL(hue, sat, lit);
+    return c.getHex();
+  }
+
+  /** Create a line material that fades near/below the horizon (y≈0 in world). */
+  private createLineMaterialWithHorizonFade(colorHex: number, opacity = 0.5, fadeLow = -80, fadeHigh = 120) {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthTest: true,     // still occluded by ground hemisphere
+      depthWrite: false,
+      blending: THREE.NormalBlending, // or THREE.AdditiveBlending if you prefer a glow
+      uniforms: {
+        uColor:    { value: new THREE.Color(colorHex) },
+        uOpacity:  { value: opacity },
+        uFadeLow:  { value: fadeLow },  // y where alpha≈0
+        uFadeHigh: { value: fadeHigh }, // y where alpha≈1
+      },
+      vertexShader: `
+      varying float vY;
+      void main() {
+        // world-space Y (height above horizon)
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vY = worldPos.y;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+      fragmentShader: `
+      precision mediump float;
+      varying float vY;
+      uniform vec3  uColor;
+      uniform float uOpacity;
+      uniform float uFadeLow;
+      uniform float uFadeHigh;
+
+      float smooth01(float x, float a, float b) {
+        float t = clamp((x - a) / max(1e-5, b - a), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t); // smoothstep
+      }
+
+      void main() {
+        float t = smooth01(vY, uFadeLow, uFadeHigh);
+        float alpha = uOpacity * t;
+        if (alpha < 0.01) discard;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `
+    });
+  }
+
+  private computeLocalBasis(points: THREE.Vector3[]) {
+    const n = new THREE.Vector3();
+    for (const p of points) n.add(p);
+    if (n.lengthSq() < 1e-9) n.set(0, 1, 0);
+    n.normalize();
+    const ref = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+    const u = new THREE.Vector3().crossVectors(ref, n).normalize();
+    const v = new THREE.Vector3().crossVectors(n, u).normalize();
+    return { u, v, n };
+  }
+
+  private mstEdges(points: THREE.Vector2[]): Array<[number, number]> {
+    const n = points.length;
+    if (n <= 1) return [];
+    const inTree = new Array(n).fill(false);
+    const minD   = new Array(n).fill(Infinity);
+    const parent = new Array(n).fill(-1);
+    inTree[0] = true;
+    for (let j = 1; j < n; j++) { minD[j] = points[0].distanceTo(points[j]); parent[j] = 0; }
+    const edges: Array<[number, number]> = [];
+    for (let k = 0; k < n - 1; k++) {
+      let v = -1, best = Infinity;
+      for (let j = 0; j < n; j++) if (!inTree[j] && minD[j] < best) { best = minD[j]; v = j; }
+      if (v === -1) break;
+      inTree[v] = true;
+      const p = parent[v]; edges.push(p < v ? [p, v] : [v, p]);
+      for (let w = 0; w < n; w++) if (!inTree[w]) {
+        const d = points[v].distanceTo(points[w]);
+        if (d < minD[w]) { minD[w] = d; parent[w] = v; }
+      }
+    }
+    return edges;
+  }
+
+  private nearestNeighborEdges(
+    points: THREE.Vector2[], kPerNode: number, existing: Set<string>
+  ): Array<[number, number]> {
+    if (kPerNode <= 0) return [];
+    const n = points.length, extras: Array<[number, number]> = [];
+    for (let i = 0; i < n; i++) {
+      const order = Array.from({ length: n }, (_, j) => j)
+        .filter(j => j !== i)
+        .sort((a,b) => points[i].distanceTo(points[a]) - points[i].distanceTo(points[b]));
+      let added = 0;
+      for (const j of order) {
+        const key = i < j ? `${i}-${j}` : `${j}-${i}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        extras.push(i < j ? [i, j] : [j, i]);
+        if (++added >= kPerNode) break;
+      }
+    }
+    return extras;
   }
 
 }

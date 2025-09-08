@@ -85,10 +85,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     // yaw free
     this.controls.minAzimuthAngle = -Infinity;
     this.controls.maxAzimuthAngle =  Infinity;
-    // allow zenith; forbid looking below horizon
+    this.camera.up.set(0,1,0);
     const EPS = THREE.MathUtils.degToRad(0.5);
-    this.controls.minPolarAngle = EPS;                 // ~0°
-    this.controls.maxPolarAngle = Math.PI / 2 - EPS;   // ~90°
+    this.controls.minPolarAngle = EPS;                 // ~0° (zenith)
+    this.controls.maxPolarAngle = Math.PI/2 - EPS;     // ~90° (horizon)
     this.controls.update();
 
     this.skyGroup = new THREE.Group();
@@ -176,7 +176,12 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.skyGroup.add(this.stars);
 
     // book constellations
-    this.constellations = this.astronomyService.createBookConstellations(1000);
+    this.constellations = this.astronomyService.createBookConstellations(1000, {
+      extraNearestPerNode: 1,
+      opacity: 0.55,
+      fadeLow: -80,  // start fading slightly below horizon
+      fadeHigh: 120  // fully visible when well above horizon
+    });
     this.skyGroup.add(this.constellations);
 
     // labels (optional – comment out if too dense)
@@ -212,12 +217,13 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.rafId = requestAnimationFrame(this.animate);
     this.controls.update();
 
-    // Declutter labels near center (tweak values to taste)
     if (this.labels) {
-      this.astronomyService.updateLabelDecluttering(this.labels, this.camera, {
-        maxLabels: 80,      // e.g. 40–120
-        radius: 0.65,       // 0.55 tighter, 0.75 looser
-        throttleMs: 120     // ~8 Hz updates
+      this.astronomyService.updateLabelFading(this.labels, this.camera, {
+        maxLabels: 120,     // try 40–120
+        radius: 0.75,      // 0.55 tighter, 0.75 looser
+        throttleMs: 240,   // compute targets ~8 Hz
+        fadeInMs: 100,     // faster in
+        fadeOutMs: 100     // slightly slower out
       });
     }
 
