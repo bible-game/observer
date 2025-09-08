@@ -1,0 +1,20 @@
+
+<div class="hud-container">
+  <div class="slider-group">
+    <label>Time: {{time.toFixed(2)}}h</label>
+    <input type="range" min="0" max="24" step="0.1" [ngModel]="time" (ngModelChange)="onTimeChange($event)">
+  </div>
+  <div class="slider-group">
+    <label>Latitude: {{latitude.toFixed(2)}}°</label>
+    <input type="range" min="-66" max="66" step="0.1" [ngModel]="latitude" (ngModelChange)="onLatitudeChange($event)">
+  </div>
+  <div class="slider-group">
+    <label>FOV: {{fov.toFixed(2)}}°</label>
+    <input type="range" min="40" max="120" step="1" [ngModel]="fov" (ngModelChange)="onFovChange($event)">
+  </div>
+  <div class="button-group">
+    <button (click)="toggleLabels.emit()">Toggle Labels</button>
+    <button (click)="toggleConstellations.emit()">Toggle Constellations</button>
+    <button (click)="regenerateStars.emit()">Regenerate Stars</button>
+  </div>
+</div>

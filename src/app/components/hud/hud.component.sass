@@ -1,0 +1,55 @@
+
+.hud-container
+  position: absolute
+  bottom: 20px
+  left: 50%
+  transform: translateX(-50%)
+  background-color: rgba(0, 0, 0, 0.5)
+  color: white
+  padding: 10px 20px
+  border-radius: 10px
+  display: flex
+  gap: 20px
+  align-items: center
+  flex-wrap: wrap
+  justify-content: center
+
+
+.slider-group, .button-group
+  display: flex
+  align-items: center
+  gap: 10px
+
+
+label
+  white-space: nowrap
+
+
+input[type="range"]
+  width: 150px
+
+
+button
+  background-color: #444
+  color: white
+  border: 1px solid #666
+  border-radius: 5px
+  padding: 5px 10px
+  cursor: pointer
+
+  &:hover
+    background-color: #555
+
+
+
+@media (max-width: 768px)
+  .hud-container
+    flex-direction: column
+    bottom: 10px
+    padding: 10px
+
+
+  input[type="range"]
+    width: 100%
+
+
