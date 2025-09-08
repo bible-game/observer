@@ -527,4 +527,123 @@ export class AstronomyService {
     return extras;
   }
 
+  // --- Keep track of the live Points instance / stars array ---
+  private _pointsRef?: THREE.Points;
+  get pointsRef() { return this._pointsRef; }
+
+// Call this inside createStars() after you construct Points:
+  private _rememberPoints(p: THREE.Points) { this._pointsRef = p; }
+
+// Expose a safe copy of current star data (after load)
+  public async getStarsSnapshot(): Promise<BibleStar[]> {
+    const data = await this.loadStarsData();
+    return data.map(s => ({ ...s })); // copy
+  }
+
+// Convert 3D -> RA/Dec
+  public vecToRaDec(v: THREE.Vector3): { ra_h: number; dec_d: number } {
+    const r = v.length() || 1;
+    const x = v.x / r, y = v.y / r, z = v.z / r;
+    const dec = Math.asin(y); // radians
+    let ra = Math.atan2(z, x); // [-π, π]
+    if (ra < 0) ra += Math.PI * 2;
+    return {
+      ra_h: (ra / (Math.PI * 2)) * 24.0,
+      dec_d: THREE.MathUtils.radToDeg(dec)
+    };
+  }
+
+// Intersect a camera ray with the celestial sphere at radius R
+  public intersectRayWithSphere(ray: THREE.Ray, R = 1000): THREE.Vector3 | null {
+    const o = ray.origin, d = ray.direction.clone().normalize();
+    // Solve |o + t d| = R
+    const b = o.dot(d);
+    const c = o.lengthSq() - R * R;
+    const disc = b*b - c;
+    if (disc < 0) return null;
+    // two solutions: t = -b ± sqrt(disc). Take the smallest positive
+    const t1 = -b - Math.sqrt(disc);
+    const t2 = -b + Math.sqrt(disc);
+    const t = t1 > 0 ? t1 : (t2 > 0 ? t2 : -1);
+    if (t <= 0) return null;
+    return o.clone().add(d.multiplyScalar(t));
+  }
+
+// Find nearest star to a given direction on the sphere (within max angular distance)
+  public async findNearestStarIndex(dirWorld: THREE.Vector3, maxDeg = 1.2, radius = 1000): Promise<number> {
+    const data = await this.loadStarsData();
+    const geo = this._pointsRef?.geometry as THREE.BufferGeometry | undefined;
+    const pos = geo?.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (!data.length || !pos) return -1;
+
+    const uDir = dirWorld.clone().normalize();
+    let bestI = -1, bestAng = Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+      const v = new THREE.Vector3(vx, vy, vz).normalize();
+      const cos = THREE.MathUtils.clamp(uDir.dot(v), -1, 1);
+      const ang = THREE.MathUtils.radToDeg(Math.acos(cos));
+      if (ang < bestAng) { bestAng = ang; bestI = i; }
+    }
+    return bestAng <= maxDeg ? bestI : -1;
+  }
+
+// Update one star’s RA/Dec + geometry + (optional) label sprite position
+  public async updateStarByIndex(i: number, ra_h: number, dec_d: number, radius = 1000, labelSprite?: THREE.Sprite) {
+    const data = await this.loadStarsData();
+    if (i < 0 || i >= data.length || !this._pointsRef) return;
+
+    // clamp to keep above horizon (optional)
+    dec_d = Math.max(2, Math.min(88, dec_d));
+
+    // update data
+    data[i].ra_h = ra_h;
+    data[i].dec_d = dec_d;
+
+    // move vertex
+    const v = this.raDecToVec(ra_h, dec_d, radius);
+    const geo = this._pointsRef.geometry as THREE.BufferGeometry;
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+    pos.setXYZ(i, v.x, v.y, v.z);
+    pos.needsUpdate = true;
+    geo.computeBoundingSphere?.();
+
+    // move label too
+    if (labelSprite) {
+      labelSprite.position.copy(this.raDecToVec(ra_h, dec_d, radius - 2));
+    }
+  }
+
+// Export current catalog as JSON string (preserves all fields)
+  public async exportStarsJson(pretty = true): Promise<string> {
+    const data = await this.loadStarsData();
+    return pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
+  }
+
+  /** Convert desired on-screen CSS pixels to world units at a given world position. */
+  private worldUnitsPerCssPixel(camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, worldPos: THREE.Vector3) {
+    // distance from camera to label
+    const dist = camera.position.distanceTo(worldPos);
+    // visible world height at that distance
+    const worldHeight = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+    // css pixels of the canvas’ height
+    const pixels = renderer.domElement.clientHeight;
+    return worldHeight / pixels; // world units per CSS pixel
+  }
+
+  /** Resize one sprite so its on-screen size equals its canvas CSS size (pixel-perfect). */
+  public fitSpriteToPixels(spr: THREE.Sprite, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer) {
+    const u = (spr as any).userData;
+    if (!u) return;
+    const cssW = u.cssW as number;
+    const cssH = u.cssH as number;
+
+    const worldPos = new THREE.Vector3();
+    spr.getWorldPosition(worldPos);
+
+    const wuPerPx = this.worldUnitsPerCssPixel(camera, renderer, worldPos);
+    spr.scale.set(cssW * wuPerPx, cssH * wuPerPx, 1);
+  }
+
+
 }

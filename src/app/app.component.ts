@@ -19,6 +19,12 @@ import { HudComponent } from './components/hud/hud.component';
       (toggleLabels)="onToggleLabels()"
       (toggleConstellations)="onToggleConstellations()"
     ></app-hud>
+    <!-- add somewhere in your template -->
+    <div class="edit-bar" style="position:fixed; top:10px; right:10px; z-index:10;">
+      <button (click)="toggleEdit()" class="btn">Edit: {{ edit.enabled ? 'ON' : 'OFF' }}</button>
+      <button (click)="downloadStars()" class="btn" [disabled]="!edit.enabled">Download JSON</button>
+    </div>
+
   `,
   styleUrls: ['./app.component.sass']
 })
@@ -235,4 +241,105 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   };
+
+  // --- Edit state ---
+  raycaster = new THREE.Raycaster();
+  pointer = new THREE.Vector2();     // NDC
+  edit = { enabled: false, dragging: false, index: -1 };
+  selectedLabel?: THREE.Sprite;      // optional highlight of label
+  sphereRadius = 1000;               // must match your stars & sky
+
+  toggleEdit() {
+    this.edit.enabled = !this.edit.enabled;
+    if (this.edit.enabled) this.attachPointerEvents();
+    else this.detachPointerEvents();
+  }
+
+  private attachPointerEvents() {
+    const el = this.renderer.domElement;
+    el.addEventListener('pointerdown', this.onPointerDown);
+    el.addEventListener('pointermove', this.onPointerMove);
+    el.addEventListener('pointerup',   this.onPointerUp);
+    el.addEventListener('pointerleave',this.onPointerUp);
+  }
+  private detachPointerEvents() {
+    const el = this.renderer.domElement;
+    el.removeEventListener('pointerdown', this.onPointerDown);
+    el.removeEventListener('pointermove', this.onPointerMove);
+    el.removeEventListener('pointerup',   this.onPointerUp);
+    el.removeEventListener('pointerleave',this.onPointerUp);
+    this.edit.dragging = false; this.edit.index = -1;
+  }
+
+  private setPointerFromEvent = (ev: PointerEvent) => {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  };
+
+// Helper: build a world-ray from camera through pointer
+  private rayFromPointer(): THREE.Ray {
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    return this.raycaster.ray.clone();
+  }
+
+// Find a label sprite for a given star index (optional, if you want to drag labels with stars)
+  private labelForIndex(i: number): THREE.Sprite | undefined {
+    if (!this.labels) return undefined;
+    // Assuming labels were created in the same order as stars:
+    const child = this.labels.children[i] as any;
+    return child && (child.isSprite ? child as THREE.Sprite : undefined);
+  }
+
+  private onPointerDown = async (ev: PointerEvent) => {
+    if (!this.edit.enabled) return;
+    this.setPointerFromEvent(ev);
+
+    const ray = this.rayFromPointer();
+    const hit = this.astronomyService.intersectRayWithSphere(ray, this.sphereRadius);
+    if (!hit) return;
+
+    // Which star is closest to this direction?
+    const idx = await this.astronomyService.findNearestStarIndex(hit, 1.5, this.sphereRadius);
+    if (idx === -1) return;
+
+    this.edit.dragging = true;
+    this.edit.index = idx;
+    (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
+  };
+
+  private onPointerMove = async (ev: PointerEvent) => {
+    if (!this.edit.enabled || !this.edit.dragging) return;
+    this.setPointerFromEvent(ev);
+
+    const ray = this.rayFromPointer();
+    const hit = this.astronomyService.intersectRayWithSphere(ray, this.sphereRadius);
+    if (!hit) return;
+
+    // Convert to RA/Dec and update the star + its label
+    const { ra_h, dec_d } = this.astronomyService.vecToRaDec(hit);
+    const label = this.labelForIndex(this.edit.index);
+    await this.astronomyService.updateStarByIndex(this.edit.index, ra_h, dec_d, this.sphereRadius, label);
+
+    // Keep label pixel-perfect if you use the crisp-scaling helpers
+    if (label) this.astronomyService.fitSpriteToPixels(label, this.camera, this.renderer);
+  };
+
+  private onPointerUp = (_ev: PointerEvent) => {
+    if (!this.edit.enabled) return;
+    this.edit.dragging = false;
+    this.edit.index = -1;
+  };
+
+// Export
+  async downloadStars() {
+    const json = await this.astronomyService.exportStarsJson(true);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'stars_edited.json';
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }
+
 }
