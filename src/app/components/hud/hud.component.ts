@@ -16,7 +16,7 @@ export class HudComponent {
   @Output() fovChange = new EventEmitter<number>();
   @Output() toggleLabels = new EventEmitter<void>();
   @Output() toggleConstellations = new EventEmitter<void>();
-  @Output() regenerateStars = new EventEmitter<void>();
+  
 
   time = 12;
   latitude = 34;

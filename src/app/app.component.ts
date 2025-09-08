@@ -18,7 +18,6 @@ import { HudComponent } from './components/hud/hud.component';
       (fovChange)="onFovChange($event)"
       (toggleLabels)="onToggleLabels()"
       (toggleConstellations)="onToggleConstellations()"
-      (regenerateStars)="onRegenerateStars()"
     ></app-hud>
   `,
   styleUrls: ['./app.component.sass']
@@ -239,7 +238,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
   /** Build the rotating sky with your AstronomyService */
   private addSky() {
-    this.stars = this.astronomyService.createStars(1000, 16000);
+    this.stars = this.astronomyService.createStars(1000);
     // Ensure star material plays nice with horizon occlusion
     const sm = this.stars.material as THREE.PointsMaterial;
     sm.depthWrite = false;                       // don't overwrite depth buffer
@@ -294,18 +293,4 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     if (this.constellations) this.constellations.visible = !this.constellations.visible;
   }
 
-  onRegenerateStars() {
-    if (this.stars) {
-      this.skyGroup.remove(this.stars);
-      this.stars.geometry.dispose();
-      (this.stars.material as THREE.Material).dispose();
-    }
-    this.stars = this.astronomyService.createStars(1000, 16000);
-    const sm = this.stars.material as THREE.PointsMaterial;
-    sm.depthWrite = false;
-    sm.depthTest = true;
-    sm.transparent = true;
-    sm.blending = THREE.AdditiveBlending;
-    this.skyGroup.add(this.stars);
-  }
 }

@@ -1,8 +1,8 @@
-
 import { Injectable } from '@angular/core';
 import * as THREE from 'three';
 import { starCatalog } from '../../data/stars';
 import { constellationLines } from '../../data/constellations';
+import * as starsData from '../../data/stars.json';
 
 @Injectable({
   providedIn: 'root'
@@ -11,14 +11,13 @@ export class AstronomyService {
 
   constructor() { }
 
-  createStars(radius: number, count: number): THREE.Points {
+  createStars(radius: number): THREE.Points {
     const vertices = [];
-    for (let i = 0; i < count; i++) {
-      const x = (Math.random() - 0.5) * 2;
-      const y = (Math.random() - 0.5) * 2;
-      const z = (Math.random() - 0.5) * 2;
-      const d = 1 / Math.sqrt(x * x + y * y + z * z);
-      vertices.push(x * d * radius, y * d * radius, z * d * radius);
+    for (const star of (starsData as any).default) {
+      const pos = this.raDecToVector3(star.ra_h, star.dec_d, radius);
+      if (pos.y > 0) {
+        vertices.push(pos.x, pos.y, pos.z);
+      }
     }
 
     const geometry = new THREE.BufferGeometry();
