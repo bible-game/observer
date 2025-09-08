@@ -98,6 +98,18 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     // Depth order clarity: ground first (static), then sky (rotating)
     this.scene.add(this.groundGroup);
     this.scene.add(this.skyGroup);
+
+    // Make sure the radius matches the sphere you placed your stars on.
+    // If you used ~990/1000 for stars, use the same here.
+    this.labels = this.astronomyService.createStarLabels(1000, {
+      useIcon: true,          // show the emoji from stars.json if present
+      fontSize: 22,           // tweak to taste
+      pad: 6,
+      textColor: '#e5e7eb',
+      bg: 'rgba(0,0,0,0.45)'
+    });
+    this.skyGroup.add(this.labels);
+
   }
 
   /** Ground hemisphere + soft horizon glow + skyline (Stellarium-like) */

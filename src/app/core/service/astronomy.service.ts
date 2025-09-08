@@ -96,4 +96,72 @@ export class AstronomyService {
     sprite.scale.set(canvas.width / 4, canvas.height / 4, 1);
     return sprite;
   }
+
+  /** Create one Sprite label per star (Book + Chapter, optional icon). */
+  createStarLabels(
+    radius: number,
+    opts: { fontSize?: number; pad?: number; useIcon?: boolean; textColor?: string; bg?: string } = {}
+  ): THREE.Group {
+    const {
+      fontSize = 22,
+      pad = 6,
+      useIcon = true,
+      textColor = '#e5e7eb',
+      bg = 'rgba(0,0,0,0.45)'
+    } = opts;
+
+    const group = new THREE.Group();
+    // Ensure labels draw above lines but still depth-test against the ground
+    group.renderOrder = 2;
+
+    // If your service uses a different loader name, change here:
+    for (const star of (starsData as any).default) {
+        // Text: "Book Chapter"
+        // Your stars.json has 'name' already like "Genesis 1" :contentReference[oaicite:1]{index=1}
+        const text = useIcon && star.icon ? `${star.icon} ${star.name}` : star.name;
+
+        // Build a canvas label
+        const c = document.createElement('canvas');
+        const ctx = c.getContext('2d')!;
+        ctx.font = `${fontSize}px system-ui, -apple-system, Segoe UI, Inter, Roboto`;
+        const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+        const h = fontSize + pad * 2;
+        c.width = w; c.height = h;
+
+        // draw
+        ctx.font = `${fontSize}px system-ui, -apple-system, Segoe UI, Inter, Roboto`;
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = textColor;
+        ctx.fillText(text, pad, h / 2);
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.minFilter = THREE.LinearFilter;
+        const mat = new THREE.SpriteMaterial({
+          map: tex,
+          transparent: true,
+          depthTest: true,
+          depthWrite: false
+        });
+        const spr = new THREE.Sprite(mat);
+
+        // If your service uses a different RA/Dec → vector helper, adjust here:
+        const p = this.raDecToVector3(star.ra_h, star.dec_d, radius - 2); // nudge inward to avoid z-fighting
+        spr.position.copy(p);
+
+        // Sprite size in world units (tweak to taste)
+        // Rough mapping: ~2 world units per px is a decent start for radius~1000 scenes
+        const worldPerPx = 2.0;
+        spr.scale.set(w * worldPerPx, h * worldPerPx, 1);
+
+        // For picking/inspection if needed later
+        (spr as any).userData = star;
+
+        group.add(spr);
+    }
+
+    return group;
+  };
+
 }
